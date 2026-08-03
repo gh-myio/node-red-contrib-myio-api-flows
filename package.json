@@ -1,0 +1,45 @@
+{
+  "name": "node-red-contrib-myio-api-flows",
+  "version": "0.1.0",
+  "description": "Node-RED node que encapsula o flow API das centrais MYIO (state, provisioning, clear-all-data e MQTT Sync status) sobre PostgreSQL — um node no lugar de uma aba API inteira.",
+  "main": "myio-api-flows.js",
+  "scripts": {
+    "test": "node test/endpoints.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gh-myio/node-red-contrib-myio-api-flows.git"
+  },
+  "keywords": [
+    "node-red",
+    "node-red-contrib",
+    "myio",
+    "postgresql",
+    "central",
+    "api",
+    "mqtt-sync",
+    "provisioning",
+    "iot"
+  ],
+  "node-red": {
+    "version": ">=1.0.0",
+    "nodes": {
+      "myio-api-flows": "myio-api-flows.js"
+    }
+  },
+  "author": "MYIO",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "pg": "8.13.3"
+  },
+  "files": [
+    "myio-api-flows.js",
+    "myio-api-flows.html",
+    "lib/",
+    "README.md",
+    "LICENSE"
+  ]
+}

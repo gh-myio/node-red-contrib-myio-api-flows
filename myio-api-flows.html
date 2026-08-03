@@ -1,0 +1,129 @@
+<!-- ===================================================================== -->
+<!-- Config node: myio-pg (conexão Postgres da central)                     -->
+<!-- ===================================================================== -->
+<script type="text/javascript">
+  RED.nodes.registerType('myio-pg', {
+    category: 'config',
+    defaults: {
+      name:     { value: '' },
+      host:     { value: '127.0.0.1', required: true },
+      port:     { value: 5432, required: true, validate: RED.validators.number() },
+      database: { value: 'hubot', required: true },
+      user:     { value: 'hubot' },
+      max:      { value: 10, validate: RED.validators.number() },
+    },
+    credentials: {
+      password: { type: 'password' },
+    },
+    label: function () {
+      return this.name || (this.user + '@' + this.host + ':' + this.port + '/' + this.database);
+    },
+  });
+</script>
+
+<script type="text/html" data-template-name="myio-pg">
+  <div class="form-row">
+    <label for="node-config-input-name"><i class="fa fa-tag"></i> Nome</label>
+    <input type="text" id="node-config-input-name" placeholder="ex.: hubot (central)">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-host"><i class="fa fa-server"></i> Host</label>
+    <input type="text" id="node-config-input-host" placeholder="127.0.0.1">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-port"><i class="fa fa-plug"></i> Porta</label>
+    <input type="text" id="node-config-input-port" placeholder="5432" style="width:120px">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-database"><i class="fa fa-database"></i> Banco</label>
+    <input type="text" id="node-config-input-database" placeholder="hubot">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-user"><i class="fa fa-user"></i> Usuário</label>
+    <input type="text" id="node-config-input-user" placeholder="hubot">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-password"><i class="fa fa-lock"></i> Senha</label>
+    <input type="password" id="node-config-input-password" placeholder="(vazio p/ auth trust/peer local)">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-max"><i class="fa fa-layer-group"></i> Pool máx</label>
+    <input type="text" id="node-config-input-max" placeholder="10" style="width:120px">
+  </div>
+</script>
+
+<!-- ===================================================================== -->
+<!-- Node principal: myio-api-flows                                         -->
+<!-- ===================================================================== -->
+<script type="text/javascript">
+  RED.nodes.registerType('myio-api-flows', {
+    category: 'MYIO',
+    color: '#8ac',
+    defaults: {
+      name:     { value: '' },
+      pg:       { value: '', type: 'myio-pg', required: true },
+      basePath: { value: '/api', required: true },
+      ep_getMqttSyncStatus: { value: true },
+      ep_getState:          { value: true },
+      ep_clearAllData:      { value: true },
+      ep_provision:         { value: true },
+      ep_setMqttSyncStatus: { value: true },
+    },
+    inputs: 0,
+    outputs: 0,
+    icon: 'font-awesome/fa-random',
+    label: function () {
+      return this.name || ('API flows ' + (this.basePath || '/api'));
+    },
+    paletteLabel: 'myio api flows',
+  });
+</script>
+
+<script type="text/html" data-template-name="myio-api-flows">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nome</label>
+    <input type="text" id="node-input-name" placeholder="API flows">
+  </div>
+  <div class="form-row">
+    <label for="node-input-pg"><i class="fa fa-database"></i> Postgres</label>
+    <input type="text" id="node-input-pg">
+  </div>
+  <div class="form-row">
+    <label for="node-input-basePath"><i class="fa fa-link"></i> Base path</label>
+    <input type="text" id="node-input-basePath" placeholder="/api">
+  </div>
+  <hr>
+  <div class="form-row"><b>Endpoints</b></div>
+  <div class="form-row">
+    <label style="width:auto"><input type="checkbox" id="node-input-ep_getMqttSyncStatus" style="width:auto;vertical-align:top"> <code>GET  {base}/mqttSyncStatus</code></label>
+  </div>
+  <div class="form-row">
+    <label style="width:auto"><input type="checkbox" id="node-input-ep_getState" style="width:auto;vertical-align:top"> <code>GET  {base}/state</code></label>
+  </div>
+  <div class="form-row">
+    <label style="width:auto"><input type="checkbox" id="node-input-ep_clearAllData" style="width:auto;vertical-align:top"> <code>POST {base}/clearAllData</code> ⚠️ destrutivo</label>
+  </div>
+  <div class="form-row">
+    <label style="width:auto"><input type="checkbox" id="node-input-ep_provision" style="width:auto;vertical-align:top"> <code>POST {base}/provision</code></label>
+  </div>
+  <div class="form-row">
+    <label style="width:auto"><input type="checkbox" id="node-input-ep_setMqttSyncStatus" style="width:auto;vertical-align:top"> <code>POST {base}/setMqttSyncStatus</code></label>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="myio-api-flows">
+  <p>Encapsula o <b>flow API</b> das centrais MYIO num único node: sobe as rotas
+  HTTP (no servidor do Node-RED) e executa <code>validate → SQL → format</code>
+  contra o Postgres da central (funções do kit <code>mqtt-sync</code>/state-api).</p>
+
+  <h3>Rotas (sob o <i>base path</i>, default <code>/api</code>)</h3>
+  <ul>
+    <li><code>GET  /api/mqttSyncStatus</code> — <code>get_mqtt_sync_status()</code></li>
+    <li><code>GET  /api/state</code> — snapshot ambients/slaves/channels/rfir/rels</li>
+    <li><code>POST /api/clearAllData</code> — <code>clear_all_data_central()</code> (⚠️ apaga cadastro)</li>
+    <li><code>POST /api/provision</code> — <code>provision_central($1::jsonb)</code> (exige <code>devices[]</code>)</li>
+    <li><code>POST /api/setMqttSyncStatus</code> — <code>set_mqtt_sync_status($1::jsonb)</code></li>
+  </ul>
+  <p>Requer um config node <b>Postgres (myio-pg)</b>. Substitui a aba API inteira
+  (http-in + function + postgresql + http-response).</p>
+</script>
