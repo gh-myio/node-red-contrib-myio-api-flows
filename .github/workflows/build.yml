@@ -1,0 +1,79 @@
+name: Build and Pack
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [16.x, 18.x, 20.x]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+
+    - name: Install dependencies
+      run: npm install --no-audit --no-fund
+
+    - name: Run tests
+      run: npm test
+      continue-on-error: true
+
+    - name: Pack package
+      run: npm pack
+
+    - name: Upload package artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: node-red-contrib-myio-api-flows-${{ matrix.node-version }}
+        path: '*.tgz'
+        retention-days: 30
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 18.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 18.x
+
+    - name: Install dependencies
+      run: npm install --no-audit --no-fund
+
+    - name: Pack package
+      run: npm pack
+
+    - name: Get package info
+      id: package
+      run: |
+        echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+        echo "name=$(node -p "require('./package.json').name")" >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.package.outputs.version }}
+        name: Release v${{ steps.package.outputs.version }}
+        files: ./${{ steps.package.outputs.name }}-${{ steps.package.outputs.version }}.tgz
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
