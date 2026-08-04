@@ -69,6 +69,9 @@
       ep_provision:         { value: true },
       ep_setMqttSyncStatus: { value: true },
     },
+    credentials: {
+      apiKey: { type: 'password' },
+    },
     inputs: 0,
     outputs: 0,
     icon: 'font-awesome/fa-random',
@@ -92,6 +95,11 @@
     <label for="node-input-basePath"><i class="fa fa-link"></i> Base path</label>
     <input type="text" id="node-input-basePath" placeholder="/api">
   </div>
+  <div class="form-row">
+    <label for="node-input-apiKey"><i class="fa fa-key"></i> API Key</label>
+    <input type="password" id="node-input-apiKey" placeholder="(vazio = rotas abertas)">
+  </div>
+  <div class="form-tips">Se preenchida, todas as rotas exigem o header <code>X-API-Key</code> (401 se faltar/errar). Vazia = sem auth.</div>
   <hr>
   <div class="form-row"><b>Endpoints</b></div>
   <div class="form-row">

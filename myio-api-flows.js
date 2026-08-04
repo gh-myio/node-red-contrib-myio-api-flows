@@ -14,6 +14,7 @@
 
 const { Pool } = require('pg');
 const { endpoints } = require('./lib/endpoints');
+const auth = require('./lib/auth');
 
 module.exports = function (RED) {
   // ───────────────────────────────────────────────────────────────────────
@@ -91,6 +92,9 @@ module.exports = function (RED) {
     };
     const ctx = { cache, node };
 
+    // auth X-API-Key (opt-in): se a credential apiKey estiver vazia, rotas abertas.
+    const apiKey = (node.credentials && node.credentials.apiKey) || '';
+
     // rotas que ESTE node adicionou — para remoção limpa no redeploy.
     const registered = []; // { method, fullPath }
     let served = 0;
@@ -98,6 +102,14 @@ module.exports = function (RED) {
     function makeHandler(ep) {
       return async function (req, res) {
         try {
+          // 0) auth — X-API-Key (só barra quando a key está configurada)
+          const a = auth.checkApiKey(req, apiKey);
+          if (!a.ok) {
+            res.status(a.status).json(a.body);
+            node.status({ fill: 'yellow', shape: 'ring', text: ep.id + ' 401' });
+            return;
+          }
+
           let params = null;
           if (typeof ep.validate === 'function') {
             const v = ep.validate(req, ctx);
@@ -162,5 +174,7 @@ module.exports = function (RED) {
       done();
     });
   }
-  RED.nodes.registerType('myio-api-flows', MyioApiFlowsNode);
+  RED.nodes.registerType('myio-api-flows', MyioApiFlowsNode, {
+    credentials: { apiKey: { type: 'password' } },
+  });
 };
