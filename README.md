@@ -23,6 +23,25 @@ Postgres (`hubot`) da central — usando as funções instaladas pelo kit
 O status `mqttSyncStatus` é mantido em cache no `global` do Node-RED (igual ao
 flow original), coerente entre o `GET` e o `POST /setMqttSyncStatus`.
 
+## Auth — X-API-Key (ED-1096 / RFC-0056)
+
+As rotas exigem o header `X-API-Key`, validado contra keys que vivem na tabela
+`environment` do banco da central (**lidas a cada request** — rotação por
+`UPDATE`, sem redeploy). Sem key cadastrada → rotas abertas (retrocompatível).
+
+| Key | Onde vive | Escopo |
+|---|---|---|
+| `CENTRAL_PRE_INITIAL_API_KEY` | hardcoded em `lib/endpoints.js` (frota toda) | só o bootstrap no GCDR — não autentica rota |
+| `CENTRAL_INITIAL_API_KEY` | tabela `environment` (obtida do GCDR no deploy) | `GET /state` e `POST /provision` restrito a `environment{}` |
+| `CENTRAL_API_KEY` | tabela `environment` | todas as 5 rotas |
+
+**Bootstrap (TOFU):** no deploy o node chama
+`GET {GCDR}/public/central/initial-key` (headers `X-Central-Pre-Key` + `uuid`
+da central), grava a `CENTRAL_INITIAL_API_KEY` retornada na `environment` e
+re-sincroniza 1×/dia. O pre-setup então usa essa key em
+`POST /provision {"environment":{"CENTRAL_API_KEY":"..."}}` para gravar a key
+definitiva. `devices[]` com a initial key → `403`.
+
 ## Instalação
 
 ```bash
@@ -49,8 +68,10 @@ Um pool `pg` compartilhado entre os nodes que o referenciam. Fecha no `close`.
 
 ## Dev
 
-- `myio-api-flows.js` — runtime (config node + node principal + registro de rotas)
-- `lib/endpoints.js` — definição declarativa dos 5 endpoints (SQL + validate + format)
+- `myio-api-flows.js` — runtime (config node + node principal + registro de rotas + bootstrap GCDR)
+- `lib/endpoints.js` — definição declarativa dos 5 endpoints (SQL + validate + format) + constantes das keys
+- `lib/auth.js` — validação X-API-Key (comparação time-constant, conjunto de keys por rota)
+- `lib/gcdr.js` — bootstrap da initial key no GCDR (RFC-0056)
 - `myio-api-flows.html` — editor
 
 ## Licença

@@ -21,11 +21,26 @@ ok('safeEqual: tamanhos diferentes → false (sem throw)', () => {
 });
 
 ok('checkApiKey: sem key configurada → ok (rotas abertas)', () => {
-  assert.deepStrictEqual(auth.checkApiKey(reqWith('qualquer'), ''), { ok: true });
-  assert.deepStrictEqual(auth.checkApiKey(reqWith(undefined), null), { ok: true });
+  assert.deepStrictEqual(auth.checkApiKey(reqWith('qualquer'), ''), { ok: true, matched: null });
+  assert.deepStrictEqual(auth.checkApiKey(reqWith(undefined), null), { ok: true, matched: null });
+  assert.deepStrictEqual(auth.checkApiKey(reqWith('x'), ['', null]), { ok: true, matched: null });
 });
-ok('checkApiKey: key certa → ok', () => {
-  assert.deepStrictEqual(auth.checkApiKey(reqWith('K'), 'K'), { ok: true });
+ok('checkApiKey: key certa → ok + matched', () => {
+  assert.deepStrictEqual(auth.checkApiKey(reqWith('K'), 'K'), { ok: true, matched: 'K' });
+});
+ok('checkApiKey: conjunto de keys — matched identifica qual bateu', () => {
+  const r1 = auth.checkApiKey(reqWith('FULL'), ['FULL', 'INITIAL']);
+  assert.deepStrictEqual(r1, { ok: true, matched: 'FULL' });
+  const r2 = auth.checkApiKey(reqWith('INITIAL'), ['FULL', 'INITIAL']);
+  assert.deepStrictEqual(r2, { ok: true, matched: 'INITIAL' });
+});
+ok('checkApiKey: conjunto de keys — nenhuma bate → 401', () => {
+  const r = auth.checkApiKey(reqWith('OUTRA'), ['FULL', 'INITIAL']);
+  assert.strictEqual(r.ok, false); assert.strictEqual(r.status, 401);
+});
+ok('checkApiKey: entradas vazias no conjunto são ignoradas', () => {
+  const r = auth.checkApiKey(reqWith('FULL'), ['FULL', '']);
+  assert.deepStrictEqual(r, { ok: true, matched: 'FULL' });
 });
 ok('checkApiKey: header ausente → 401 missing', () => {
   const r = auth.checkApiKey(reqWith(undefined), 'K');

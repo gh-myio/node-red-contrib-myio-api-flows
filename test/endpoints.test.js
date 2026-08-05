@@ -59,7 +59,7 @@ ok('clearAllData: sem result → 500', () => {
   assert.strictEqual(out.statusCode, 500);
 });
 
-ok('provision: sem devices[] → 400', () => {
+ok('provision: sem devices[] nem environment{} → 400', () => {
   const v = ep('provision').validate({ body: { foo: 1 } });
   assert.strictEqual(v.error, true);
   assert.strictEqual(v.statusCode, 400);
@@ -69,6 +69,58 @@ ok('provision: com devices[] → params jsonb', () => {
   const body = { devices: [{ id: 1 }] };
   const v = ep('provision').validate({ body });
   assert.deepStrictEqual(v.params, [JSON.stringify(body)]);
+});
+
+ok('provision: devices[] com authRole=full → ok', () => {
+  const body = { devices: [{ id: 1 }] };
+  const v = ep('provision').validate({ body }, { authRole: 'full' });
+  assert.deepStrictEqual(v.params, [JSON.stringify(body)]);
+});
+
+ok('provision: devices[] com authRole=initial → 403 (só environment{})', () => {
+  const v = ep('provision').validate({ body: { devices: [] } }, { authRole: 'initial' });
+  assert.strictEqual(v.error, true);
+  assert.strictEqual(v.statusCode, 403);
+});
+
+ok('provision: environment{} → envUpsert (aceito com initial)', () => {
+  const v = ep('provision').validate(
+    { body: { environment: { CENTRAL_API_KEY: 'nova-key', foo: 'bar' } } },
+    { authRole: 'initial' }
+  );
+  assert.deepStrictEqual(v.envUpsert, [['CENTRAL_API_KEY', 'nova-key'], ['foo', 'bar']]);
+});
+
+ok('provision: environment{} vazio → 400', () => {
+  const v = ep('provision').validate({ body: { environment: {} } });
+  assert.strictEqual(v.error, true);
+  assert.strictEqual(v.statusCode, 400);
+});
+
+ok('provision: environment com valor não-string → 400', () => {
+  const v = ep('provision').validate({ body: { environment: { k: { nested: true } } } });
+  assert.strictEqual(v.error, true);
+  assert.strictEqual(v.statusCode, 400);
+});
+
+ok('provision: environment com value > 255 chars → 400 (varchar da tabela)', () => {
+  const v = ep('provision').validate({ body: { environment: { k: 'x'.repeat(256) } } });
+  assert.strictEqual(v.error, true);
+  assert.strictEqual(v.statusCode, 400);
+});
+
+ok('provision: devices[] E environment{} juntos → 400', () => {
+  const v = ep('provision').validate({ body: { devices: [], environment: { k: 'v' } } });
+  assert.strictEqual(v.error, true);
+  assert.strictEqual(v.statusCode, 400);
+});
+
+ok('state e provision permitem initial key; demais não', () => {
+  assert.strictEqual(ep('getState').allowInitialKey, true);
+  assert.strictEqual(ep('provision').allowInitialKey, true);
+  assert.ok(!ep('clearAllData').allowInitialKey);
+  assert.ok(!ep('getMqttSyncStatus').allowInitialKey);
+  assert.ok(!ep('setMqttSyncStatus').allowInitialKey);
 });
 
 ok('provision: errors[] → 207', () => {
