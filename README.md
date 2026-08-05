@@ -42,6 +42,10 @@ re-sincroniza 1×/dia. O pre-setup então usa essa key em
 `POST /provision {"environment":{"CENTRAL_API_KEY":"..."}}` para gravar a key
 definitiva. `devices[]` com a initial key → `403`.
 
+O `GET /state` **não ecoa** as rows `CENTRAL_API_KEY`/`CENTRAL_INITIAL_API_KEY`
+no objeto `environment` do snapshot — a API nunca devolve segredo (evita
+escalação initial → full e exposição enquanto as rotas estão abertas).
+
 ## Instalação
 
 ```bash

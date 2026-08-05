@@ -4,7 +4,7 @@
 // Roda com: npm test   (node test/endpoints.test.js)
 
 const assert = require('assert');
-const { endpoints } = require('../lib/endpoints');
+const { endpoints, STATE_SQL, ENV_KEY_API, ENV_KEY_INITIAL } = require('../lib/endpoints');
 
 function makeCache() {
   const store = {};
@@ -40,6 +40,12 @@ ok('getState: desembrulha state', () => {
   const out = ep('getState').format([{ state }]);
   assert.deepStrictEqual(out.payload, state);
   assert.strictEqual(out.headers['Content-Type'], 'application/json');
+});
+
+ok('getState: SQL não ecoa as API keys no environment do snapshot', () => {
+  // /state é legível com a initial key (e aberto sem key cadastrada) — as rows
+  // das keys precisam ficar fora do agregado, senão viram escalação initial→full.
+  assert.match(STATE_SQL, new RegExp("NOT IN \\('" + ENV_KEY_API + "', '" + ENV_KEY_INITIAL + "'\\)"));
 });
 
 ok('getState: vazio → shape defensivo', () => {
