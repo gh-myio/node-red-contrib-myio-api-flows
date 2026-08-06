@@ -15,9 +15,9 @@ Postgres (`hubot`) da central — usando as funções instaladas pelo kit
 | Rota (sob o base path, default `/api`) | Função no banco | Notas |
 |---|---|---|
 | `GET  /api/mqttSyncStatus` | `get_mqtt_sync_status()` | precedência db → cache → `enable` |
-| `GET  /api/state` | `json_build_object(...)` | snapshot ambients/slaves/channels/rfir/rels |
+| `GET  /api/state` | `json_build_object(...)` | snapshot ambients/slaves/channels/rfir/rels/environment (sem as API keys) |
 | `POST /api/clearAllData` | `clear_all_data_central()` | ⚠️ **destrutivo** (apaga cadastro) |
-| `POST /api/provision` | `provision_central($1::jsonb)` | exige `devices[]`; `207` se `result.errors[]` |
+| `POST /api/provision` | `provision_central($1::jsonb)` | `devices[]` (`207` se `result.errors[]`) **ou** `environment{}` (upsert key→value) |
 | `POST /api/setMqttSyncStatus` | `set_mqtt_sync_status($1::jsonb)` | valida envelope v2 (`intent`/`mqttSyncStatus`) |
 
 O status `mqttSyncStatus` é mantido em cache no `global` do Node-RED (igual ao
@@ -62,7 +62,10 @@ Requer `pg@8.13.3` (dependência declarada) e as funções do banco já instalad
 2. Crie/selecione um config node **Postgres (`myio-pg`)**: host, porta, banco
    (`hubot`), usuário, senha (pode ser vazia com auth `trust`/`peer` local).
 3. Ajuste o **base path** (default `/api`) e ligue/desligue endpoints.
-4. Deploy. As rotas passam a responder em `http://<central>:8080/api/...`.
+4. (Opcional) Preencha **UUID central** e **GCDR URL** para o bootstrap da
+   `CENTRAL_INITIAL_API_KEY` — vazios, o node lê o uuid das rows
+   `CENTRAL_UUID`/`uuid` da tabela `environment` e usa o GCDR de produção.
+5. Deploy. As rotas passam a responder em `http://<central>:8080/api/...`.
 
 > Redeploy remove e re-registra apenas as rotas deste node (sem duplicar).
 
