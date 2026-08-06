@@ -13,7 +13,45 @@
  */
 
 const { Pool } = require('pg');
-const { endpoints } = require('./lib/endpoints');
+const {
+  endpoints, CENTRAL_PRE_INITIAL_API_KEY, GCDR_BASE_URL, ENV_KEY_API, ENV_KEY_INITIAL,
+} = require('./lib/endpoints');
+const auth = require('./lib/auth');
+const gcdr = require('./lib/gcdr');
+
+// upsert key→value na tabela environment. A tabela não tem PK/unique em `key`
+// (não dá pra usar ON CONFLICT) — UPDATE primeiro, INSERT se não afetou linha,
+// numa transação.
+async function upsertEnvironment(pool, entries) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const [k, v] of entries) {
+      const u = await client.query('UPDATE environment SET value = $2 WHERE key = $1', [k, v]);
+      if (u.rowCount === 0) {
+        await client.query('INSERT INTO environment (key, value) VALUES ($1, $2)', [k, v]);
+      }
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* já caiu */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// keys de auth lidas da tabela environment A CADA request — rotação por UPDATE
+// vale na requisição seguinte, sem redeploy (requisito ED-1096).
+async function loadApiKeys(pool) {
+  const r = await pool.query(
+    'SELECT key, value FROM environment WHERE key IN ($1, $2)',
+    [ENV_KEY_API, ENV_KEY_INITIAL]
+  );
+  const map = {};
+  for (const row of r.rows) if (row.value) map[row.key] = row.value;
+  return { full: map[ENV_KEY_API] || '', initial: map[ENV_KEY_INITIAL] || '' };
+}
 
 module.exports = function (RED) {
   // ───────────────────────────────────────────────────────────────────────
@@ -98,18 +136,47 @@ module.exports = function (RED) {
     function makeHandler(ep) {
       return async function (req, res) {
         try {
+          const pool = pgNode.getPool();
+
+          // 0) auth — X-API-Key contra as keys da tabela environment (ED-1096).
+          //    CENTRAL_API_KEY vale em toda rota; CENTRAL_INITIAL_API_KEY só nas
+          //    rotas com allowInitialKey (/state e /provision). Nenhuma key
+          //    cadastrada → rota aberta (retrocompatível, opt-in).
+          const keys = await loadApiKeys(pool);
+          const allowed = ep.allowInitialKey ? [keys.full, keys.initial] : [keys.full];
+          const a = auth.checkApiKey(req, allowed);
+          if (!a.ok) {
+            res.status(a.status).json(a.body);
+            node.status({ fill: 'yellow', shape: 'ring', text: ep.id + ' 401' });
+            return;
+          }
+          const authRole = a.matched
+            ? (a.matched === keys.full ? 'full' : 'initial')
+            : 'open';
+          const reqCtx = { cache, node, authRole };
+
           let params = null;
+          let envUpsert = null;
           if (typeof ep.validate === 'function') {
-            const v = ep.validate(req, ctx);
+            const v = ep.validate(req, reqCtx);
             if (v && v.error) {
               res.status(v.statusCode || 400).json(v.body || { error: 'invalid' });
-              node.status({ fill: 'yellow', shape: 'ring', text: ep.id + ' 400' });
+              node.status({ fill: 'yellow', shape: 'ring', text: ep.id + ' ' + (v.statusCode || 400) });
               return;
             }
             if (v && v.params) params = v.params;
+            if (v && v.envUpsert) envUpsert = v.envUpsert;
           }
 
-          const pool = pgNode.getPool();
+          // modo environment{} do /provision: upsert direto, sem provision_central
+          if (envUpsert) {
+            await upsertEnvironment(pool, envUpsert);
+            res.status(200).json({ ok: true, updated: envUpsert.map((e) => e[0]) });
+            served += 1;
+            node.status({ fill: 'green', shape: 'dot', text: served + ' req · ' + ep.id + ' env' });
+            return;
+          }
+
           const result = await pool.query(ep.sql, params || []);
           const out = ep.format(result.rows, ctx) || {};
 
@@ -142,8 +209,55 @@ module.exports = function (RED) {
     });
     node.log('myio-api-flows: ' + registered.length + ' rota(s) registradas sob ' + basePath);
 
+    // ── bootstrap GCDR (RFC-0056): troca pre-key + uuid da central pela
+    // CENTRAL_INITIAL_API_KEY e grava na tabela environment. TOFU/idempotente.
+    // Roda no deploy com retry (backoff até 1h) e re-sincroniza 1×/dia para
+    // refletir rotação/revogação feita no GCDR. Nunca bloqueia as rotas.
+    const gcdrUrl = (config.gcdrUrl || '').trim() || GCDR_BASE_URL;
+    const RESYNC_MS = 24 * 60 * 60 * 1000;
+    let bootstrapTimer = null;
+    let closed = false;
+
+    async function resolveCentralUuid(pool) {
+      const fromConfig = (config.centralUuid || '').trim();
+      if (fromConfig) return fromConfig;
+      const r = await pool.query(
+        "SELECT value FROM environment WHERE key IN ('CENTRAL_UUID', 'uuid') AND value IS NOT NULL LIMIT 1"
+      );
+      return (r.rows[0] && r.rows[0].value) || '';
+    }
+
+    function scheduleBootstrap(delayMs, attempt) {
+      if (closed) return;
+      bootstrapTimer = setTimeout(() => { runBootstrap(attempt); }, delayMs);
+      if (bootstrapTimer.unref) bootstrapTimer.unref();
+    }
+
+    async function runBootstrap(attempt) {
+      if (closed) return;
+      try {
+        const pool = pgNode.getPool();
+        const uuid = await resolveCentralUuid(pool);
+        if (!uuid) throw new Error('uuid da central indisponível (config do node ou tabela environment)');
+        const out = await gcdr.fetchInitialKey({
+          baseUrl: gcdrUrl, preKey: CENTRAL_PRE_INITIAL_API_KEY, uuid,
+        });
+        await upsertEnvironment(pool, [[ENV_KEY_INITIAL, out.apiKey]]);
+        node.log('myio-api-flows: CENTRAL_INITIAL_API_KEY sincronizada do GCDR (cached=' + (out.cached === true) + ')');
+        scheduleBootstrap(RESYNC_MS, 0);
+      } catch (err) {
+        const delay = Math.min(30000 * Math.pow(2, attempt), 3600000);
+        node.warn('myio-api-flows: bootstrap GCDR falhou (' + err.message + ') — retry em ' + Math.round(delay / 1000) + 's');
+        scheduleBootstrap(delay, attempt + 1);
+      }
+    }
+
+    scheduleBootstrap(1000, 0);
+
     // remove SÓ as rotas deste node do router do Express (evita duplicar em redeploy)
     node.on('close', function (done) {
+      closed = true;
+      if (bootstrapTimer) { clearTimeout(bootstrapTimer); bootstrapTimer = null; }
       try {
         const stack = RED.httpNode && RED.httpNode._router && RED.httpNode._router.stack;
         if (stack && registered.length) {
