@@ -1,6 +1,6 @@
 {
   "name": "node-red-contrib-myio-api-flows",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Node-RED node que encapsula o flow API das centrais MYIO (state, provisioning, clear-all-data e MQTT Sync status) sobre PostgreSQL — um node no lugar de uma aba API inteira.",
   "main": "myio-api-flows.js",
   "scripts": {
