@@ -4,7 +4,7 @@
   "description": "Node-RED node que encapsula o flow API das centrais MYIO (state, provisioning, clear-all-data e MQTT Sync status) sobre PostgreSQL — um node no lugar de uma aba API inteira.",
   "main": "myio-api-flows.js",
   "scripts": {
-    "test": "node test/endpoints.test.js && node test/auth.test.js && node test/gcdr.test.js"
+    "test": "node test/endpoints.test.js && node test/auth.test.js && node test/gcdr.test.js && node test/telemetry.test.js"
   },
   "repository": {
     "type": "git",
