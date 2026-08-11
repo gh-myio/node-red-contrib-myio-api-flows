@@ -68,6 +68,12 @@
       ep_clearAllData:      { value: true },
       ep_provision:         { value: true },
       ep_setMqttSyncStatus: { value: true },
+      ep_telemetryEnergy:      { value: true },
+      ep_telemetryPulses:      { value: true },
+      ep_telemetryActuator:    { value: true },
+      ep_telemetryTemperature: { value: true },
+      ep_telemetryRawEnergy:   { value: false },
+      ep_telemetryConsumption: { value: false },
       centralUuid: { value: '' },
       gcdrUrl:     { value: '' },
     },
@@ -124,6 +130,25 @@
   <div class="form-row">
     <label style="width:auto"><input type="checkbox" id="node-input-ep_setMqttSyncStatus" style="width:auto;vertical-align:top"> <code>POST {base}/setMqttSyncStatus</code></label>
   </div>
+  <div class="form-row"><b>Telemetry (RFC-0001)</b></div>
+  <div class="form-row">
+    <label style="width:auto"><input type="checkbox" id="node-input-ep_telemetryEnergy" style="width:auto;vertical-align:top"> <code>GET  {base}/telemetry/energy</code></label>
+  </div>
+  <div class="form-row">
+    <label style="width:auto"><input type="checkbox" id="node-input-ep_telemetryPulses" style="width:auto;vertical-align:top"> <code>GET  {base}/telemetry/pulses</code></label>
+  </div>
+  <div class="form-row">
+    <label style="width:auto"><input type="checkbox" id="node-input-ep_telemetryActuator" style="width:auto;vertical-align:top"> <code>GET  {base}/telemetry/actuator</code></label>
+  </div>
+  <div class="form-row">
+    <label style="width:auto"><input type="checkbox" id="node-input-ep_telemetryTemperature" style="width:auto;vertical-align:top"> <code>GET  {base}/telemetry/temperature</code></label>
+  </div>
+  <div class="form-row">
+    <label style="width:auto"><input type="checkbox" id="node-input-ep_telemetryRawEnergy" style="width:auto;vertical-align:top"> <code>GET  {base}/telemetry/raw-energy</code> (default off)</label>
+  </div>
+  <div class="form-row">
+    <label style="width:auto"><input type="checkbox" id="node-input-ep_telemetryConsumption" style="width:auto;vertical-align:top"> <code>GET  {base}/telemetry/consumption</code> (default off)</label>
+  </div>
 </script>
 
 <script type="text/html" data-help-name="myio-api-flows">
@@ -140,6 +165,21 @@
         ou upsert de <code>environment{}</code> (key→value na tabela environment)</li>
     <li><code>POST /api/setMqttSyncStatus</code> — <code>set_mqtt_sync_status($1::jsonb)</code></li>
   </ul>
+
+  <h3>Telemetry (RFC-0001)</h3>
+  <p>Rotas <code>GET</code> read-only sobre a telemetria local
+  (<code>?slave_id=&amp;from=&amp;to=&amp;limit=&amp;order=</code> — <code>slave_id</code>
+  e <code>from</code> obrigatórios; <code>limit</code> máx. 5000):</p>
+  <ul>
+    <li><code>/telemetry/energy</code> — <code>consumption_realtime</code></li>
+    <li><code>/telemetry/pulses</code> — <code>channel_pulse_log</code> (+<code>channel</code> opcional)</li>
+    <li><code>/telemetry/actuator</code> — <code>logs</code> (+<code>channel</code> opcional)</li>
+    <li><code>/telemetry/temperature</code> — <code>temperature_history</code></li>
+    <li><code>/telemetry/raw-energy</code> — <code>raw_energy</code> (default off)</li>
+    <li><code>/telemetry/consumption</code> — <code>consumption</code>
+        (<code>slave_id</code> ou <code>ambient_id</code>; default off)</li>
+  </ul>
+  <p>Exigem a <code>CENTRAL_API_KEY</code> (a initial key não vale).</p>
 
   <h3>Auth — X-API-Key (ED-1096 / RFC-0056)</h3>
   <p>As keys vivem na tabela <code>environment</code> do banco e são lidas a cada

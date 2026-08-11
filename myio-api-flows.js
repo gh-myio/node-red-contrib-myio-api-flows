@@ -18,6 +18,10 @@ const {
 } = require('./lib/endpoints');
 const auth = require('./lib/auth');
 const gcdr = require('./lib/gcdr');
+const { telemetryEndpoints } = require('./lib/telemetry');
+
+// endpoints do flow API + telemetria (RFC-0001) — mesmo pipeline/handler.
+const allEndpoints = endpoints.concat(telemetryEndpoints);
 
 // upsert key→value na tabela environment. A tabela não tem PK/unique em `key`
 // (não dá pra usar ON CONFLICT) — UPDATE primeiro, INSERT se não afetou linha,
@@ -113,7 +117,11 @@ module.exports = function (RED) {
     if (basePath.endsWith('/')) basePath = basePath.slice(0, -1); // normaliza sem barra final
 
     // toggles por endpoint: config['ep_<id>'] === false desliga a rota.
-    const isEnabled = (ep) => config['ep_' + ep.id] !== false;
+    // defaultOff (ex.: telemetry/raw-energy) exige opt-in explícito — flows
+    // antigos (campo undefined) não ganham a rota sem alguém marcar o checkbox.
+    const isEnabled = (ep) => ep.defaultOff
+      ? config['ep_' + ep.id] === true
+      : config['ep_' + ep.id] !== false;
 
     if (!pgNode) {
       node.status({ fill: 'red', shape: 'ring', text: 'sem config Postgres' });
@@ -157,8 +165,10 @@ module.exports = function (RED) {
 
           let params = null;
           let envUpsert = null;
+          let v = null;
+          let sqlText = ep.sql;
           if (typeof ep.validate === 'function') {
-            const v = ep.validate(req, reqCtx);
+            v = ep.validate(req, reqCtx);
             if (v && v.error) {
               res.status(v.statusCode || 400).json(v.body || { error: 'invalid' });
               node.status({ fill: 'yellow', shape: 'ring', text: ep.id + ' ' + (v.statusCode || 400) });
@@ -166,6 +176,9 @@ module.exports = function (RED) {
             }
             if (v && v.params) params = v.params;
             if (v && v.envUpsert) envUpsert = v.envUpsert;
+            // validate pode devolver o SQL a usar (telemetria: ORDER BY asc/desc
+            // validado por allowlist — nunca valor de request interpolado).
+            if (v && v.sql) sqlText = v.sql;
           }
 
           // modo environment{} do /provision: upsert direto, sem provision_central
@@ -177,8 +190,8 @@ module.exports = function (RED) {
             return;
           }
 
-          const result = await pool.query(ep.sql, params || []);
-          const out = ep.format(result.rows, ctx) || {};
+          const result = await pool.query(sqlText, params || []);
+          const out = ep.format(result.rows, ctx, v || {}) || {};
 
           if (out.headers) {
             for (const [h, val] of Object.entries(out.headers)) res.set(h, val);
@@ -196,7 +209,7 @@ module.exports = function (RED) {
     }
 
     // sobe as rotas habilitadas
-    for (const ep of endpoints) {
+    for (const ep of allEndpoints) {
       if (!isEnabled(ep)) continue;
       const fullPath = basePath + ep.path;
       RED.httpNode[ep.method](fullPath, makeHandler(ep));
