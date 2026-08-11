@@ -31,7 +31,6 @@ jobs:
 
     - name: Run tests
       run: npm test
-      continue-on-error: true
 
     - name: Pack package
       run: npm pack
@@ -46,10 +45,15 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    # não roda no push do próprio commit de release (evita loop)
+    if: >-
+      (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') &&
+      !startsWith(github.event.head_commit.message, 'chore(release)')
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0   # precisa das tags para decidir o bump
 
     - name: Use Node.js 18.x
       uses: actions/setup-node@v4
@@ -59,14 +63,28 @@ jobs:
     - name: Install dependencies
       run: npm install --no-audit --no-fund
 
-    - name: Pack package
-      run: npm pack
-
-    - name: Get package info
+    # Cada merge no master gera uma release NOVA: se a tag da versão do
+    # package.json já existe, auto-bumpa o patch e commita de volta — nunca
+    # sobrescreve uma release/tag existente.
+    - name: Resolve release version
       id: package
       run: |
-        echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        version=$(node -p "require('./package.json').version")
+        if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+          npm version patch --no-git-tag-version
+          version=$(node -p "require('./package.json').version")
+          git commit -am "chore(release): v$version"
+          git push origin HEAD:${{ github.ref_name }}
+        fi
+        git tag "v$version"
+        git push origin "v$version"
+        echo "version=$version" >> $GITHUB_OUTPUT
         echo "name=$(node -p "require('./package.json').name")" >> $GITHUB_OUTPUT
+
+    - name: Pack package
+      run: npm pack
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
