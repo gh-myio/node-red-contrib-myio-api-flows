@@ -44,6 +44,30 @@ board), `limit` defaults to 500 and is hard-capped at 5000, `order` is
 Response envelope: `{ source, slave_id, count, rows }`. Telemetry routes
 require the `CENTRAL_API_KEY` (the initial key is not accepted).
 
+## Central Logs API (RFC-0002)
+
+Read-only `GET` endpoints over the central's **systemd journal** (see
+`docs/RFC-0002-Central-Logs-API.md`) — no more SSH to read service logs.
+Unlike the SQL endpoints, these spawn a bounded, allowlisted `journalctl`
+(argument array, never a shell; `-o json --no-pager`, never `--follow`).
+
+| Route | Notes |
+|---|---|
+| `GET /api/logs/services` | allowlisted units + state (`active`/`sub`/`since`) |
+| `GET /api/logs?service=&since=&until=&priority=&grep=&limit=&order=` | journal of **one** allowlisted unit |
+
+`service` (allowlisted; default `myio.service,myio-api.service`, configurable
+in the editor) and `since` (ISO-8601) are **required**; `priority` is
+`emerg…debug`/`0..7`; `grep` is filtered in-process (length-capped); `limit`
+defaults to 500, hard-capped at 5000; spawn timeout + output cap kill runaway
+reads. Response: `{ service, since, until, count, entries[] }` with
+`entries[] = { ts, priority, level, message, pid, unit }`. Requires the
+`CENTRAL_API_KEY`.
+
+> **Deployment prerequisite:** the service hosting Node-RED must be able to
+> read the target units' journals (e.g. `systemd-journal` group). An unreadable
+> unit shows up as `active: "unknown"` in `/logs/services`.
+
 ## Auth — X-API-Key (ED-1096 / RFC-0056)
 
 Routes require the `X-API-Key` header, validated against keys that live in the
@@ -104,6 +128,7 @@ A `pg` pool shared by the nodes that reference it. Closed on `close`.
 - `lib/auth.js` — X-API-Key validation (time-constant comparison, per-route key set)
 - `lib/gcdr.js` — initial key bootstrap against GCDR (RFC-0056)
 - `lib/telemetry.js` — telemetry endpoints (RFC-0001): bounded/capped GET queries
+- `lib/logs.js` — logs endpoints (RFC-0002): allowlisted, bounded `journalctl` reads
 - `myio-api-flows.html` — editor
 
 ## License

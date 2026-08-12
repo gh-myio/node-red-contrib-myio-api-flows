@@ -19,9 +19,11 @@ const {
 const auth = require('./lib/auth');
 const gcdr = require('./lib/gcdr');
 const { telemetryEndpoints } = require('./lib/telemetry');
+const { logsEndpoints } = require('./lib/logs');
 
-// endpoints do flow API + telemetria (RFC-0001) — mesmo pipeline/handler.
-const allEndpoints = endpoints.concat(telemetryEndpoints);
+// endpoints do flow API + telemetria (RFC-0001) + logs (RFC-0002) —
+// mesmo pipeline/handler; logs executam via ep.exec (journalctl), sem SQL.
+const allEndpoints = endpoints.concat(telemetryEndpoints, logsEndpoints);
 
 // upsert key→value na tabela environment. A tabela não tem PK/unique em `key`
 // (não dá pra usar ON CONFLICT) — UPDATE primeiro, INSERT se não afetou linha,
@@ -137,6 +139,12 @@ module.exports = function (RED) {
     };
     const ctx = { cache, node };
 
+    // config dos endpoints de logs (RFC-0002): allowlist de units + paths.
+    const logsConfig = {
+      allowlist: config.logsUnits || '', // vazio → default do lib/logs.js
+      journalctlPath: (config.journalctlPath || '').trim() || 'journalctl',
+    };
+
     // rotas que ESTE node adicionou — para remoção limpa no redeploy.
     const registered = []; // { method, fullPath }
     let served = 0;
@@ -161,7 +169,7 @@ module.exports = function (RED) {
           const authRole = a.matched
             ? (a.matched === keys.full ? 'full' : 'initial')
             : 'open';
-          const reqCtx = { cache, node, authRole };
+          const reqCtx = { cache, node, authRole, logsConfig };
 
           let params = null;
           let envUpsert = null;
@@ -179,6 +187,18 @@ module.exports = function (RED) {
             // validate pode devolver o SQL a usar (telemetria: ORDER BY asc/desc
             // validado por allowlist — nunca valor de request interpolado).
             if (v && v.sql) sqlText = v.sql;
+          }
+
+          // endpoints com execução própria (logs/RFC-0002: journalctl, sem SQL)
+          if (typeof ep.exec === 'function') {
+            const out = await ep.exec(v || {}, reqCtx) || {};
+            if (out.headers) {
+              for (const [h, val] of Object.entries(out.headers)) res.set(h, val);
+            }
+            res.status(out.statusCode || 200).json(out.payload);
+            served += 1;
+            node.status({ fill: 'green', shape: 'dot', text: served + ' req · ' + ep.id });
+            return;
           }
 
           // modo environment{} do /provision: upsert direto, sem provision_central

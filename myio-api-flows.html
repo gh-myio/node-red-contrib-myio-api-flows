@@ -74,6 +74,10 @@
       ep_telemetryTemperature: { value: true },
       ep_telemetryRawEnergy:   { value: false },
       ep_telemetryConsumption: { value: false },
+      ep_logsServices: { value: true },
+      ep_logs:         { value: true },
+      logsUnits:      { value: '' },
+      journalctlPath: { value: '' },
       centralUuid: { value: '' },
       gcdrUrl:     { value: '' },
     },
@@ -149,6 +153,25 @@
   <div class="form-row">
     <label style="width:auto"><input type="checkbox" id="node-input-ep_telemetryConsumption" style="width:auto;vertical-align:top"> <code>GET  {base}/telemetry/consumption</code> (default off)</label>
   </div>
+  <div class="form-row"><b>Logs (RFC-0002)</b></div>
+  <div class="form-row">
+    <label style="width:auto"><input type="checkbox" id="node-input-ep_logsServices" style="width:auto;vertical-align:top"> <code>GET  {base}/logs/services</code></label>
+  </div>
+  <div class="form-row">
+    <label style="width:auto"><input type="checkbox" id="node-input-ep_logs" style="width:auto;vertical-align:top"> <code>GET  {base}/logs</code></label>
+  </div>
+  <div class="form-row">
+    <label for="node-input-logsUnits"><i class="fa fa-list"></i> Log units</label>
+    <input type="text" id="node-input-logsUnits" placeholder="myio.service,myio-api.service">
+  </div>
+  <div class="form-row">
+    <label for="node-input-journalctlPath"><i class="fa fa-terminal"></i> journalctl</label>
+    <input type="text" id="node-input-journalctlPath" placeholder="journalctl (PATH)">
+  </div>
+  <div class="form-tips">Allowlist de units cujo journal o <code>GET /logs</code>
+  pode ler (separadas por vírgula; vazio = default). O serviço do Node-RED
+  precisa de permissão de leitura do journal dessas units (grupo
+  <code>systemd-journal</code> ou equivalente).</div>
 </script>
 
 <script type="text/html" data-help-name="myio-api-flows">
@@ -180,6 +203,19 @@
         (<code>slave_id</code> ou <code>ambient_id</code>; default off)</li>
   </ul>
   <p>Exigem a <code>CENTRAL_API_KEY</code> (a initial key não vale).</p>
+
+  <h3>Logs (RFC-0002)</h3>
+  <p>Journal do systemd das units da <b>allowlist</b> (default
+  <code>myio.service,myio-api.service</code>), via <code>journalctl</code>
+  limitado (sem shell, sem <code>--follow</code>):</p>
+  <ul>
+    <li><code>GET /logs/services</code> — allowlist + estado das units</li>
+    <li><code>GET /logs?service=&amp;since=&amp;until=&amp;priority=&amp;grep=&amp;limit=&amp;order=</code>
+        — <code>service</code> (da allowlist) e <code>since</code> obrigatórios;
+        <code>limit</code> máx. 5000</li>
+  </ul>
+  <p>Também exigem a <code>CENTRAL_API_KEY</code>. Unit sem permissão de leitura
+  aparece como <code>active: "unknown"</code> no <code>/logs/services</code>.</p>
 
   <h3>Auth — X-API-Key (ED-1096 / RFC-0056)</h3>
   <p>As keys vivem na tabela <code>environment</code> do banco e são lidas a cada
