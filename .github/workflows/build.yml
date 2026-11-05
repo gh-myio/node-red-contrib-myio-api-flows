@@ -16,7 +16,8 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [16.x, 18.x, 20.x]
+        # 12.x = Node das centrais (12.21 / npm 6.14) — valida engines >=12 e o pg bundled
+        node-version: [12.x, 16.x, 18.x, 20.x]
 
     steps:
     - uses: actions/checkout@v4
