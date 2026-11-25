@@ -18,12 +18,19 @@ const server = http.createServer((req, res) => {
     res.writeHead(401, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ error: 'unauthorized' }));
   }
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({
+  const payload = {
     apiKey: 'gcdr_cust_test_' + req.headers.uuid,
     scopes: ['central-state:read', 'central-environment:read', 'central-environment:write'],
+    customerId: '56614a70-326f-11ef-ad2c-53aeabe7d3fa',
     cached: false,
-  }));
+  };
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  if (req.headers.uuid === 'raw') return res.end(JSON.stringify(payload));
+  if (req.headers.uuid === 'empty') {
+    return res.end(JSON.stringify({ success: true, data: {}, meta: {} }));
+  }
+  // formato real do GCDR: envelope { success, data, meta }
+  res.end(JSON.stringify({ success: true, data: payload, meta: { requestId: 'r1' } }));
 });
 
 (async () => {
@@ -32,10 +39,23 @@ const server = http.createServer((req, res) => {
 
   console.log('gcdr:');
 
-  await ok('bootstrap ok → apiKey por central (headers X-Central-Pre-Key + uuid)', async () => {
+  await ok('bootstrap ok → apiKey por central (envelope GCDR { success, data, meta })', async () => {
     const out = await gcdr.fetchInitialKey({ baseUrl, preKey: 'PRE', uuid: 'central-1' });
     assert.strictEqual(out.apiKey, 'gcdr_cust_test_central-1');
     assert.ok(Array.isArray(out.scopes));
+    assert.strictEqual(out.cached, false);
+  });
+
+  await ok('bootstrap ok → objeto cru (shorthand RFC-0056) continua aceito', async () => {
+    const out = await gcdr.fetchInitialKey({ baseUrl, preKey: 'PRE', uuid: 'raw' });
+    assert.strictEqual(out.apiKey, 'gcdr_cust_test_raw');
+  });
+
+  await ok('envelope sem apiKey → rejeita', async () => {
+    await assert.rejects(
+      () => gcdr.fetchInitialKey({ baseUrl, preKey: 'PRE', uuid: 'empty' }),
+      /sem apiKey/
+    );
   });
 
   await ok('pre-key errada → rejeita (HTTP 401)', async () => {
